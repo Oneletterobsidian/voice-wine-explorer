@@ -1,0 +1,516 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Voice Wine Explorer</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    min-height: 100vh;
+    background: linear-gradient(135deg, #1a0a0a 0%, #2d1515 50%, #1a0a1a 100%);
+    display: flex; flex-direction: column; align-items: center;
+    padding: 24px 16px; font-family: Georgia, serif; color: #f5e6d3;
+  }
+  header { text-align: center; margin-bottom: 20px; }
+  header .icon { font-size: 36px; }
+  header h1 { font-size: 26px; font-weight: bold; color: #e8c99a; margin: 4px 0 0; letter-spacing: 1px; }
+  header p { color: #c4956a; margin: 4px 0 0; font-size: 13px; }
+
+  #chat-area {
+    width: 100%; max-width: 680px;
+    background: rgba(255,255,255,0.05);
+    border-radius: 16px; border: 1px solid rgba(232,201,154,0.15);
+    padding: 20px; min-height: 300px; max-height: 420px;
+    overflow-y: auto; margin-bottom: 16px;
+  }
+  .empty-state { text-align: center; color: #8a6a4a; padding-top: 50px; }
+  .empty-state .big { font-size: 28px; margin-bottom: 10px; }
+  .empty-state p { font-size: 14px; }
+
+  .msg { margin-bottom: 14px; display: flex; }
+  .msg.user { justify-content: flex-end; }
+  .msg.assistant { justify-content: flex-start; }
+  .bubble {
+    max-width: 80%; padding: 10px 14px; font-size: 13px; line-height: 1.6;
+    white-space: pre-wrap;
+  }
+  .msg.user .bubble {
+    background: linear-gradient(135deg, #7b2d2d, #a03a3a);
+    color: #ffe8d6; border-radius: 16px 16px 4px 16px;
+  }
+  .msg.assistant .bubble {
+    background: rgba(255,255,255,0.05); color: #f5e6d3;
+    border: 1px solid rgba(232,201,154,0.15);
+    border-radius: 16px 16px 16px 4px;
+  }
+  .bubble .label { font-size: 11px; color: #c4956a; display: block; margin-bottom: 4px; }
+  .bubble .replay-btn {
+    display: inline-block; margin-top: 6px; background: none; border: none;
+    color: #c4956a; cursor: pointer; font-size: 11px; padding: 0; font-family: Georgia, serif;
+  }
+
+  .dots { display: flex; gap: 6px; padding: 10px 14px; }
+  .dot {
+    width: 8px; height: 8px; border-radius: 50%; background: #c4956a;
+    animation: bounce 1.2s infinite;
+  }
+  .dot:nth-child(2) { animation-delay: 0.2s; }
+  .dot:nth-child(3) { animation-delay: 0.4s; }
+  @keyframes bounce { 0%,80%,100%{transform:translateY(0)} 40%{transform:translateY(-7px)} }
+
+  #suggestions {
+    width: 100%; max-width: 680px;
+    display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 14px;
+  }
+  .sug-btn {
+    background: rgba(255,255,255,0.05); border: 1px solid rgba(232,201,154,0.15);
+    border-radius: 20px; padding: 6px 14px; color: #c4956a;
+    font-size: 12px; cursor: pointer; font-family: Georgia, serif;
+  }
+  .sug-btn:hover { background: rgba(232,201,154,0.12); }
+
+  #input-area {
+    width: 100%; max-width: 680px;
+    display: flex; gap: 10px; align-items: center;
+  }
+  #query-input {
+    flex: 1; padding: 12px 18px; border-radius: 30px;
+    border: 1px solid rgba(232,201,154,0.3);
+    background: rgba(255,255,255,0.06); color: #f5e6d3;
+    font-size: 13px; outline: none; font-family: Georgia, serif;
+  }
+  #query-input::placeholder { color: #8a6a4a; }
+  #send-btn {
+    padding: 12px 18px; border-radius: 30px; border: none;
+    background: linear-gradient(135deg, #7b2d2d, #a03a3a);
+    color: #ffe8d6; cursor: pointer; font-size: 13px;
+    font-weight: bold; font-family: Georgia, serif;
+  }
+  #send-btn:disabled { background: #555; cursor: not-allowed; }
+  #mic-btn {
+    width: 46px; height: 46px; border-radius: 50%; border: none;
+    background: linear-gradient(135deg, #6b2d6b, #8e44ad);
+    color: white; cursor: pointer; font-size: 18px;
+    transition: box-shadow 0.2s;
+  }
+  #mic-btn.active {
+    background: linear-gradient(135deg, #c0392b, #e74c3c);
+    box-shadow: 0 0 0 4px rgba(231,76,60,0.3);
+  }
+  #stop-btn {
+    width: 46px; height: 46px; border-radius: 50%; border: none;
+    background: linear-gradient(135deg, #2d6b2d, #27ae60);
+    color: white; cursor: pointer; font-size: 18px; display: none;
+  }
+</style>
+</head>
+<body>
+
+<header>
+  <div class="icon">🍷</div>
+  <h1>Voice Wine Explorer</h1>
+  <p id="subtitle">Loading wines...</p>
+</header>
+
+<div id="chat-area">
+  <div class="empty-state" id="empty-state">
+    <div class="big">🍾</div>
+    <p>Ask me anything about our wine collection.</p>
+  </div>
+</div>
+
+<div id="suggestions">
+  <button class="sug-btn" onclick="ask('Best-rated wines under $50?')">Best-rated wines under $50?</button>
+  <button class="sug-btn" onclick="ask('Wines from Burgundy?')">Wines from Burgundy?</button>
+  <button class="sug-btn" onclick="ask('Most expensive bottle?')">Most expensive bottle?</button>
+  <button class="sug-btn" onclick="ask('Good housewarming gift wine?')">Good housewarming gift wine?</button>
+  <button class="sug-btn" onclick="ask('Pinot Noir recommendations?')">Pinot Noir recommendations?</button>
+</div>
+
+<div id="input-area">
+  <input id="query-input" type="text" placeholder="Ask about wines..." onkeydown="if(event.key==='Enter') ask(this.value)" />
+  <button id="send-btn" onclick="ask(document.getElementById('query-input').value)">Send</button>
+  <button id="mic-btn" onclick="toggleMic()">🎤</button>
+  <button id="stop-btn" onclick="stopSpeaking()">🔇</button>
+</div>
+
+<script>
+const WINES_CSV = `ABV,Country,Name,Producer,Region,Retail,Varietal,Vintage,color
+14.5,United States,STAG'S LEAP ARTEMIS CABERNET SAUVIGNON,Stag's Leap Wine Cellars,California,89.99,Cabernet Sauvignon,2019,red
+12,France,VEUVE CLICQUOT BRUT NV,Veuve Clicquot,Champagne,69.99,Sparkling Blend,,sparkling
+13.5,United States,LA CREMA CHARDONNAY MONTEREY,La Crema,California,23.99,Chardonnay,2023,white
+13.5,Italy,ALLEGRINI PALAZZO DELLA TORRE,Allegrini,Veneto,24.99,Red Blend,2019,red
+13.5,Italy,VILLA ANTINORI TOSCANA ROSSO,Marchesi Antinori,Tuscany,24.99,Sangiovese,2019,red
+13,New Zealand,KIM CRAWFORD SAUVIGNON BLANC,Kim Crawford,South Island,19.99,Sauvignon Blanc,2024,white
+14.4,United States,CAYMUS CABERNET SAUVIGNON,Caymus,California,119.99,Cabernet Sauvignon,2020,red
+14,Italy,TIGNANELLO TOSCANA IGT,Marchesi Antinori,Tuscany,204.99,Super Tuscan,2021,red
+14.5,United States,DUCKHORN MERLOT,Duckhorn Vineyards,California,69.99,Merlot,2020,red
+Spain,BODEGA NUMANTHIA TERMANTHIA,Numanthia,Toro,225.99,,2012,red
+11,Italy,MIONETTO PROSECCO BRUT,Mionetto,Veneto,17.99,Glera,,sparkling
+12,France,LAURENT PERRIER ROSE,Laurent-Perrier,Champagne,109.99,Sparkling Blend,,rose
+13.5,Argentina,CATENA CLASSIC MALBEC,Catena Zapata,Mendoza,26.99,Malbec,2019,red
+13.5,Italy,ANTINORI CHIANTI CLASSICO PEPPOLI,Marchesi Antinori,Tuscany,24.99,Sangiovese,2020,red
+15.5,Italy,MASI AMARONE CLASSICO COSTASERA,Masi,Veneto,72.99,Red Blend,2018,red
+13,France,WHISPERING ANGEL ROSE,Chateau d'Esclans,Provence,27.99,Rosé Blend,2022,rose
+22.99,Italy,LA SCOLCA GAVI,La Scolca,Piedmont,22.99,Cortese,2021,white
+14.2,United States,CORISON NAPA CABERNET,Corison Wines,Napa Valley,104.99,Cabernet Sauvignon,2017,red
+12.5,United States,Gloria Ferrer Sonoma Brut,Gloria Ferrer,Sonoma County,33.99,,,sparkling
+10.5,Portugal,MAPRECO,Mapreco,Vinho Verde,12.99,,2024,rose
+13.5,United States,FLOWERS CHARDONNAY,Flowers,California,55.99,Chardonnay,2021,white
+13,France,OLIVIER LEFLAIVE LES SETILLES,Olivier Leflaive,Burgundy,35.99,Chardonnay,2020,white
+14.5,Italy,RENATO RATTI BARBERA D'ASTI,Renato Ratti,Piedmont,24.99,Barbera,2021,red
+12.5,France,PERRIER JOUET BELLE EPOQUE,Perrier-Jouet,Champagne,225.99,Sparkling Blend,2014,sparkling
+,France,RUINART CHAMPAGNE ROSE,Ruinart,Champagne,109.99,Sparkling Blend,,rose
+12.5,France,VEUVE CLICQUOT LA GRANDE DAME,VEUVE CLICQUOT,Champagne,195.99,Sparkling Blend,2018,sparkling
+13.5,New Zealand,LOVEBLOCK SAUVIGNON BLANC,Loveblock,South Island,28.99,Sauvignon Blanc,2023,white
+12,United States,CHANDON BRUT ROSE,Chandon,California,30.99,Sparkling Blend,,rose
+12,France,LAURENT PERRIER BRUT,Laurent-Perrier,Champagne,74.99,Sparkling Blend,,sparkling
+9.5,Canada,INNISKILLIN RIESLING ICEWINE,Inniskillin,Ontario,99.99,Riesling,2021,dessert
+13.5,Italy,ALTESINO TOSCANA ROSSO,Altesino,Tuscany,34.99,Super Tuscan,2020,red
+13.9,United States,SONOMA-CUTRER SONOMA COAST,Sonoma-Cutrer Vineyards,California,34.99,Chardonnay,2023,white
+11.9,United States,SONOMA-CUTRER PINOT NOIR,Sonoma-Cutrer Vineyards,California,39.99,Pinot Noir,2023,rose
+14,Italy,SELLA & MOSCA CANNONAU RISERVA,Sella & Mosca,Sardinia,23.99,Grenache,2019,red
+14.9,Argentina,COLOME ESTATE MALBEC,Bodega Colome,Mendoza,22.99,Malbec,2020,red
+12,France,PIPER HEIDSIECK CHAMPAGNE,Piper-Heidsieck,Champagne,49.99,,,sparkling
+12,France,BOLLINGER SPECIAL CUVEE BRUT,Champagne Bollinger,Champagne,89.99,Sparkling Blend,,sparkling
+12,France,BOLLINGER LA GRANDE ANNEE 2014,Champagne Bollinger,Champagne,199.99,Sparkling Blend,2014,sparkling
+14.1,United States,DUCKHORN SAUVIGNON BLANC,Duckhorn Vineyards,California,39.99,Sauvignon Blanc,2021,white
+14.5,United States,BOGLE PINOT NOIR,Bogle Vineyards,California,14.99,Pinot Noir,2021,red
+13,United States,CHANDON BRUT NV,Chandon,California,26.99,Sparkling Blend,,sparkling
+13,France,GUIGAL CROZES HERMITAGE,E. Guigal,Rhone,32.99,,2021,red
+12,France,VEUVE AMBAL CREMANT,Veuve Ambal,Burgundy,13.99,Sparkling Blend,,sparkling
+34.99,Italy,FATTORIA DEI BARBI ROSSO DI MONTALCINO,Fattoria dei Barbi,Tuscany,34.99,,2017,red
+14.5,United States,OVERTURE BY OPUS ONE,Opus One,California,189.99,Red Blend,,red
+13,New Zealand,DOG POINT SAUVIGNON BLANC,Dog Point Vineyard,South Island,29.99,Sauvignon Blanc,2021,white
+9,United States,CH STE MICHELLE RIESLING,Chateau Ste. Michelle,Washington,13.99,Riesling,2022,white
+13.5,United States,BROADSIDE CABERNET SAUVIGNON,Broadside,California,19.99,Cabernet Sauvignon,2022,red
+13.5,New Zealand,CLOUDY BAY PINOT NOIR,Cloudy Bay,South Island,49.99,Pinot Noir,2022,red
+14,Spain,MARQUES DE MURRIETA RIOJA RESERVA,Marques de Murrieta,Rioja,34.99,Tempranillo,2018,red
+9.5,Canada,INNISKILLIN CAB FRANC ICEWINE,Inniskillin,Canada,109.99,Cabernet Franc,2022,dessert
+14.8,United States,BELLE GLOS CLARKE AND TELEPHONE,Belle Glos,California,64.99,Pinot Noir,2021,red
+14.5,France,GUIGAL COTES DU RHONE ROUGE,E. Guigal,Rhone Valley,17.99,Grenache Syrah,2018,red
+15.5,United States,THE PRISONER RED BLEND,The Prisoner Wine Company,California,50.99,Blend,2019,red
+14.1,United States,FLOWERS PINOT NOIR,Flowers,California,59.99,Pinot Noir,2021,red
+13.3,New Zealand,CLOUDY BAY SAUVIGNON BLANC,Cloudy Bay,South Island,38.99,Sauvignon Blanc,2021,white
+14.2,United States,SILVER OAK ALEXANDER VALLEY,Silver Oak,California,114.99,Cabernet Sauvignon,2018,red
+12,France,ROEDERER CRISTAL BRUT,Louis Roederer,Champagne,349.99,Sparkling Blend,2014,sparkling
+12.5,Italy,KRIS PINOT GRIGIO,Kris,Friuli-Venezia Giulia,15.99,Pinot Grigio,2023,white
+13.5,France,CHATEAU PAPE CLEMENT,Chateau Pape Clement,Bordeaux,48.99,Cabernet Merlot,2012,red
+12.5,France,MICHEL TETE BEAUJOLAIS NOUVEAU,Michel Tete,Burgundy,19.99,Gamay,2022,red
+14.5,Portugal,ESPORAO RESERVA TINTO,Herdade Do Esporao,Alentejo,19.99,Red Blend,2020,red
+14.5,Italy,G. D. VAJRA ALBE BAROLO,G.D. Vajra,Piedmont,45.99,Nebbiolo,2017,red
+14.5,Italy,ARGIANO BRUNELLO DI MONTALCINO,Argiano,Tuscany,112.99,Sangiovese,2018,red
+13.5,United States,CH STE. MICHELLE CABERNET SAUVIGNON,Chateau Ste. Michelle,Washington,22.99,Cabernet Sauvignon,2019,red
+14.5,United States,SILVER OAK NAPA VALLEY,Silver Oak Napa Valley,California,159.99,Cabernet Sauvignon,2017,red
+13,France,WHISPERING ANGEL 375ML,Chateau d'Esclans,Provence,16.99,,2021,rose
+13.5,United States,KENDALL JACKSON SAUVIGNON BLANC,Kendall-Jackson,California,18.99,,2016,white
+13,France,CHATEAU MINUTY M DE ROSE,Chateau Minuty,Provence,25.99,,2021,rose
+14.5,Spain,VINA ARDANZA RIOJA RESERVA,La Rioja Alta,Rioja,46.99,Tempranillo,2015,red
+14,Italy,RUFFINO RISERVA DUCALE TAN,Ruffino,Tuscany,32.99,Sangiovese,2019,red
+14.5,United States,JOSEPH PHELPS INSIGNIA,Joseph Phelps Vineyards,Napa Valley,324.99,,2015,red
+13.5,France,CHATEAU SIRAN MARGAUX,Chateau Siran,Bordeaux,49.99,Bordeaux Blend,2017,red
+14.5,Italy,AZELIA BAROLO,Azelia,Piedmont,45.99,Nebbiolo,2018,red
+12,France,MAISON DE GRAND ESPRIT CREMANT,La Maison de Grand Esprit,Burgundy,22.99,,,sparkling
+12,Germany,VON WINNING RIESLING,Von Winning,Pfalz,28.99,Riesling,2018,white
+27.99,Italy,VIETTI ARNEIS,Vietti,Piedmont,27.99,Arneis,2017,white
+13.5,Italy,LE VOLTE DELL'ORNELLAIA,Ornellaia,Tuscany,39.99,Red Blend,2020,red
+149.99,Argentina,COLOME ALTURA MAXIMA MALBEC,Bodega Colome,Salta,149.99,,2014,red
+14.5,Italy,LE SERRE NUOVE DELL ORNELLAIA,Ornellaia,Tuscany,79.99,Red Blend,2019,red
+16.1,United States,JUSTIN ISOSCELES,Justin,California,91.99,Red Blend,2017,red
+14.5,France,CHATEAU CANON LA GAFFELIERE,Chateau Canon La Gaffeliere,Bordeaux,199.99,,2010,red
+14.8,United States,RIDGE THREE VALLEYS,Ridge Vineyards,California,44.99,Red Blend,2020,red
+13,France,TRIMBACH RIESLING,Trimbach,Alsace,23.99,Riesling,2020,white
+15,Italy,ORNELLAIA BOLGHERI SUPERIORE,Ornellaia,Tuscany,289.99,Super Tuscan,2020,red
+14.5,Italy,Fattoria dei Barbi Brunello,Fattoria dei Barbi,Tuscany,81.99,,2013,red
+129.99,France,Dagueneau Silex,Didier Dagueneau,Loire Valley,129.99,Sauvignon Blanc,,white
+14.5,United States,CLIFF LEDE POETRY,Cliff Lede Vineyards,California,234.99,Cabernet Sauvignon,2017,red
+149.99,Portugal,Quinta do Noval 40 Yr Tawny Port,Quinta do Noval,Portugal,149.99,,,fortified
+,Spain,BODEGA NUMANTHIA TERMES,Numanthia,Castilla Y Leon,24.99,Tempranillo,2017,red
+12.5,France,MOET & CHANDON 2012 GRAND VINTAGE,Moet & Chandon,Champagne,139.99,,2012,sparkling
+12,France,POL ROGER BRUT RESERVE NV,Pol Roger,Champagne,73.99,Sparkling Blend,,sparkling
+14.5,United States,DOMINUS ESTATE 2019,Dominus Estate,California,349.99,Red Bordeaux Blend,2019,red
+14,France,ROCK ANGEL ROSE,Chateau d'Esclans,Provence,30.99,Rosé Blend,2020,rose
+99.99,Italy,ALDO CONTERNO BAROLO BUSSIA,ALDO CONTERNO,Piedmont,99.99,Nebbiolo,2016,red
+14,Italy,GAJA BARBARESCO,GAJA,Piedmont,299.99,Nebbiolo,2012,red
+,France,Chateau Lafite Rothschild,Chateau Lafite Rothschild,Bordeaux,1195.99,,2014,red
+14.9,United States,LEVIATHAN RED BLEND,Leviathan,California,49.99,Red Blend,2020,red
+14.5,France,LES CLANS ROSE,Chateau d'Esclans,Provence,69.99,Rosé Blend,2019,rose
+12.5,France,KRUG GRANDE CUVEE 171TH EDITION,House of Krug,Champagne,259.99,Sparkling Blend,,sparkling
+12.5,France,DOM PERIGNON ROSE 2008,Dom Perignon,Champagne,509.99,Sparkling Blend,2008,rose
+12.5,France,DOM PERIGNON 2015,Dom Perignon,Champagne,309.99,Sparkling Blend,2015,sparkling
+14.6,United States,REALM THE BARD,Realm Cellars,California,199.99,Red Blend,2019,red
+15.9,United States,Sine Qua Non Hated Hunter,Sine Qua Non,California,299.99,Syrah,2017,red
+14.5,United States,DOMINUS ESTATE 2006,Dominus Estate,California,325.99,Red Bordeaux Blend,2006,red
+14.5,United States,DOMINUS ESTATE 2009,Dominus Estate,California,325.99,Bordeaux Blend,2009,red
+14.2,United States,Decoy Chardonnay,Decoy,California,19.99,,2023,white
+14.1,United States,Decoy Merlot,Decoy,California,27.99,,2022,red
+14.5,United States,THE PRISONER CHARDONNAY,The Prisoner Wine Company,California,39.99,Chardonnay,2019,white
+15,United States,SALDO RED WINE,The Prisoner Wine Company,California,37.99,Red Blend,2019,red
+13.5,United States,SALDO CHENIN BLANC,The Prisoner Wine Company,California,32.99,Chenin Blanc,2021,white
+15,France,Domaine de la Janasse Chateauneuf du Pape,Domaine de la Janasse,Rhone,45.99,,2022,red
+14.5,Italy,COL D'ORCIA BRUNELLO DI MONTALCINO,Col d'Orcia,Tuscany,75.99,Sangiovese,2019,red
+14.5,United States,Silverado Vineyards Cabernet Sauvignon,Silverado Vineyards,Napa Valley,66.99,,2022,red
+13.6,United States,JORDAN CABERNET SAUVIGNON,Jordan Vineyard & Winery,Alexander Valley,87.99,Cabernet Sauvignon,2020,red
+12.7,United States,JORDAN CHARDONNAY,Jordan Vineyard & Winery,Russian River,51.99,,2023,white
+14.4,United States,Frank Family Chardonnay,Frank Family Vineyards,Carneros,34.99,,2023,white
+13,New Zealand,Wairau River Pinot Noir,Wairau River,Marlborough,22.99,,2023,red
+14.9,United States,DAOU PESSIMIST RED BLEND,Pessimist,California,29.99,Red Blend,2023,red
+14.5,United States,Rodney Strong Symmetry,Rodney Strong Vineyards,Alexander Valley,55.99,,2019,red
+14.5,United States,GUNDLACH BUNDSCHU CABERNET SAUVIGNON,Gundlach Bundschu,California,65.99,Cabernet Sauvignon,2021,red
+14.4,United States,Banshee Cabernet Sauvignon,Banshee,Sonoma County,22.99,,2022,red
+13.9,United States,Banshee Pinot Noir,Banshee,Sonoma County,16.99,,2023,red
+14.5,United States,ROCHIOLI PINOT NOIR,Rochioli,Russian River,86.99,,2023,red
+14.5,Italy,ANTINORI TIGNANELLO,Marchesi Antinori,Tuscany,109.99,Super Tuscan,2021,red
+15,Italy,Isole E Olena Cepparello,Isole e Olena,Tuscany,174.99,,2020,red
+14,Spain,MARQUES DE MURRIETA CASTILLO YGAY,Marques de Murrieta,Rioja,259.99,Tempranillo,2011,red
+14.5,Italy,PAOLO SCAVINO BAROLO BRICCO AMBROGIO,Paolo Scavino,Piedmont,89.99,Nebbiolo,2021,red
+14,Italy,Marcarini Barolo del Comune di La Morra,Marcarini,Piedmont,55.99,,2020,red
+14.5,United States,Donum Pinot Noir Carneros,The Donum Estate,Carneros,99.99,,2021,red
+13,France,Bouchard Pere Bourgogne Pinot Noir,Bouchard Pere & Fils,Burgundy,26.99,,2020,red
+13.5,France,Les Fiefs De Lagrange,Chateau Lagrange,Bordeaux,42.99,,2016,red
+12.5,France,Ruinart Blanc De Blanc,Ruinart,Champagne,129.99,,,sparkling
+15.2,Spain,MARQUES DE RISCAL BARON DE CHIREL,Marques de Riscal,Rioja,99.99,,2020,red
+14.5,Spain,MARQUES DE RISCAL RIOJA RESERVA,Marques de Riscal,Rioja,54.99,,2020,red
+13,France,Chateau Montaud Rose,Chateau Montaud,Cotes De Provence,16.99,,2024,rose
+12.5,France,Chateau Puech-Haut Rose,Chateau Puech-Haut,Languedoc,23.99,,2024,rose
+13.5,Italy,ALTA MORA ROSSO,Alta Mora,Sicily,37.99,,2019,red
+12.5,Italy,ALTA MORA ETNA BIANCO,Alta Mora,Sicily,37.99,,2023,white
+13.5,Italy,Ceretto Arneis Blange Langhe,Ceretto,Piedmont,28.99,Arneis,2021,white
+12,France,Lucien Albrecht Cremant D'Alsace,Lucien Albrecht,Alsace,24.99,,,sparkling
+13,France,Rumor Rose,Rumor,Provence,29.99,Rosé,2024,rose
+14,Lebanon,CHATEAU MUSAR BEKAA VALLEY RED,Chateau Musar,Lebanon,31.99,Red Blend,2020,red
+12.5,France,RUINART BLANC SINGULER,Ruinart,Champagne,149.99,,,sparkling
+14.5,Italy,AVIGNONESI VINO NOBILE,Avignonesi,Tuscany,34.99,,2021,red
+13.5,Argentina,EL ENEMIGO MALBEC,El Enemigo,Mendoza,26.99,Malbec,2018,red
+14.5,Spain,VINA REAL RIOJA CRIANZA,Vina Real,Rioja,20.99,Tempranillo,2018,red
+,Spain,Bodegas Muga Reserva Rioja,Bodegas Muga,Rioja,35.99,,2021,red
+6,Italy,Saracco Moscato D'ASTI,Saracco,Piedmont,15.99,,2024,white
+5,Italy,Vietti Moscato Asti,Vietti,Piedmont,19.99,,2024,white
+14.5,France,CHATEAU DE NALYS GRAND VIN,Chateau de Nalys,Rhone Valley,89.99,Rhone Red Blend,2016,red
+15,France,GUIGAL CONDRIEU,E. Guigal,Rhone Valley,59.99,Viognier,2019,white
+14.5,France,GUIGAL CONDRIEU LA DORIANNE,E. Guigal,Rhone Valley,154.99,Viognier,2020,white
+14,France,GUIGAL ST. JOSEPH,E. Guigal,Rhone Valley,79.99,Syrah,2018,red
+13.5,France,GUIGAL COTE-ROTIE LA MOULINE,E. Guigal,Rhone Valley,449.99,Syrah,2013,red
+,France,GUIGAL COTE-ROTIE LA TURQUE,E. Guigal,Rhone Valley,474.99,Syrah,2012,red
+14,Italy,G.D. VAJRA LANGHE NEBBIOLO,G.D. Vajra,Piedmont,29.99,Nebbiolo,2021,red
+13.5,France,CHATEAU GRAND-PUY-LACOSTE,Chateau Grand-Puy-Lacoste,Bordeaux,134.99,Bordeaux Blend,2016,red
+14,France,JADOT SAVIGNY-LES BEAUNE,Louis Jadot,Burgundy,59.99,Chardonnay,2019,white
+14.5,Italy,PERTINACE BARBARESCO,Pertinace,Piedmont,46.99,Nebbiolo,2019,red
+12.5,France,DOM PERIGNON P2 2004,Dom Perignon,Champagne,549.99,Sparkling Blend,2004,sparkling
+14,United States,Newton The Puzzle,Newton Vineyard,California,108.98,,2017,red
+13.5,Argentina,TIKAL AMORIO MALBEC,Tikal,Mendoza,42.99,Malbec,2018,red
+13,France,MOUTON CADET SAUVIGNON BLANC,Mouton Cadet,Bordeaux,19.99,,2023,white
+13.5,United States,HOUSE OF BROWN CHARDONNAY,House of Brown,Lodi,23.99,,2022,white
+13,Australia,YALUMBA VIOGNIER,YALUMBA,Eden Valley,18.99,Viognier,2018,white
+13,France,TRIMBACH PINOT BLANC,Trimbach,Alsace,15.99,Pinot Blanc,2019,white
+14.5,United States,FAR NIENTE OAKVILLE CABERNET,FAR NIENTE,California,184.99,Cabernet Sauvignon,2017,red
+14.5,United States,THE PRISONER CABERNET SAUVIGNON,The Prisoner Wine Company,California,69.99,Cabernet Sauvignon,2019,red
+14.5,United States,NAPANOOK RED,Dominus Estate,California,99.99,Bordeaux Blend,2019,red
+14.5,Italy,CASTIGLION DEL BOSCO BRUNELLO,Castiglion del Bosco,Tuscany,79.99,Sangiovese,2017,red
+14,France,BEAUCASTEL CHATEAUNEUF DU PAPE BLANC,Chateau de Beaucastel,Rhone Valley,114.99,White Blend,2020,white
+12.5,France,KRUG GRANDE CUVEE,House of Krug,Champagne,259.99,Sparkling Blend,,sparkling
+13,France,Chateau Lafite Rothschild 2014,Chateau Lafite Rothschild,Bordeaux,1195.99,Bordeaux Blend,2014,red
+14.5,France,CHATEAU CANON LA GAFFELIERE 2010,Chateau Canon La Gaffeliere,Bordeaux,199.99,,2010,red
+13.5,France,CHATEAU SIRAN MARGAUX 2017,Chateau Siran,Bordeaux,49.99,Bordeaux Blend,2017,red
+14.3,United States,Mount Veeder Chardonnay,AXR,Napa Valley,49.99,,2021,white
+12,France,MOET IMPERIAL BRUT,Moet & Chandon,Champagne,69.99,,,sparkling
+14,France,LES HAUTES DE BARVILLE BLANC,Maison Brotte,Rhone Valley,39.99,White Blend,2024,white
+13,France,LOUIS LATOUR MACON-LUGNY,Louis Latour,Burgundy,29.99,,2023,white
+14,United States,J. Lohr Merlot,J. Lohr Vineyards & Wines,Central Coast,17.99,,2022,red
+14,United States,J Lohr Chardonnay Riverstone,J. Lohr Vineyards & Wines,Central Coast,21.99,,2023,white
+13.5,Italy,Mandrarossa Etna Bianco IDDA,IDDA,Sicily,14.99,,2023,white
+12,France,JADIX PICPOUL DE PINET,Jadix,Languedoc,19.99,Picpoul Blanc,2024,white
+13,France,Stephane Aviron Beaujolais Villages,Stephane Aviron,Burgundy,22.99,,2022,red
+13.5,Italy,Cecchi Chianti,Cecchi,Tuscany,16.99,,2022,red
+14.3,United States,Post & Beam Chardonnay,Post & Beam by Far Niente,Carneros,44.99,,2023,white
+14.5,United States,Post and Beam Cabernet Sauvignon,FAR NIENTE,California,55.99,Cabernet Sauvignon,2019,red
+12.5,France,WILLIAM FEVRE CHABLIS PREMIER CRU,William Fevre,Burgundy,74.99,Chardonnay,2021,white
+15,Argentina,SALENTEIN NUMINA GRAN CORTE,Bodegas Salentein,Mendoza,39.99,Malbec,2021,red
+14.5,South Africa,BIG FLOWER CABERNET FRANC,Botanica Wines,Stellenbosch,24.99,,2023,red
+14.5,United States,POSTMARK CABERNET SAUVIGNON,Postmark,Central Coast,31.99,,2022,red
+14,Argentina,ZUCCARDI SERIE A MALBEC,Familia Zuccardi Vineyards,Mendoza,18.99,,2023,red
+13.7,Spain,VINA LANCIANO RIOJA,Bodegas Lan,Rioja,32.99,,2019,red
+14.5,France,CLOS DES MENUTS,Clos des Menuts,Bordeaux,34.99,,2018,red
+14.5,United States,GUNDLACH BUNDSCHU CABERNET 2021,Gundlach Bundschu,California,65.99,Cabernet Sauvignon,2021,red
+14.4,United States,Frank Family Chardonnay Carneros,Frank Family Vineyards,Carneros,34.99,,2023,white
+13,France,Chateau Montaud Rose 2024,Chateau Montaud,Cotes De Provence,16.99,,2024,rose
+14,Lebanon,CHATEAU MUSAR RED,Chateau Musar,Lebanon,31.99,Red Blend,2020,red
+14.5,Italy,AVIGNONESI VINO NOBILE 2021,Avignonesi,Tuscany,34.99,,2021,red
+15.2,Spain,MARQUES DE RISCAL BARON DE CHIREL 2020,Marques de Riscal,Rioja,99.99,,2020,red
+13.5,Argentina,FLECHAS DE LOS ANDES MALBEC,Flechas De Los Andes,Mendoza,36.99,,2021,red
+14.5,Italy,RISERVA DUCALE ORO,Ruffino,Tuscany,44.99,,2020,red
+14,Italy,Borgo Scopeto Chianti,Borgo Scopeto,Tuscany,22.99,,2022,red
+14.5,United States,JORDAN CABERNET SAUVIGNON 2020,Jordan Vineyard & Winery,Alexander Valley,87.99,Cabernet Sauvignon,2020,red
+14.5,United States,PELLET ESTATE CABERNET SAUVIGNON,Pellet Estate,California,129.99,,2018,red
+14.5,Italy,LA LECCIAIA BRUNELLO RISERVA 2017,Fattoria La Lecciaia,Tuscany,59.99,Sangiovese,2017,red
+13,France,L. LATOUR MONTAGNY 1er CRU,Louis Latour,Burgundy,49.99,Chardonnay,2022,white
+20,Portugal,Warre's OTIMA Tawny Port 20 Years,Warre's,Douro,62.99,,,fortified
+14.5,Italy,PAOLO SCAVINO BAROLO BRICCO AMBROGIO 2021,Paolo Scavino,Piedmont,89.99,Nebbiolo,2021,red
+13.8,United States,Woodward Canyon Chardonnay,Woodward Canyon,Washington,109.99,,2022,white
+20,Portugal,Sandeman Port Tawny 30 Year,Sandeman,Douro,114.99,,,fortified
+20,Portugal,Sandeman Port Tawny 10 Year,Sandeman,Douro,38.99,,,fortified
+14.5,Italy,Riserva Ducale Oro Gran Selezione,Ruffino,Tuscany,44.99,,2020,red
+15,France,Domaine Du Vieux Lazaret Chateauneuf,Domaine du Vieux Lazaret,Rhone,99.99,,2023,red
+14.5,United States,CAKEBREAD BENCHLAND SELECT,Cakebread Cellars,California,189.99,,2019,red`;
+
+// Parse wines
+const lines = WINES_CSV.trim().split('\n');
+const headers = lines[0].split(',');
+const wines = lines.slice(1).map(line => {
+  const vals = line.split(',');
+  const obj = {};
+  headers.forEach((h, i) => obj[h.trim()] = (vals[i] || '').trim());
+  return obj;
+}).filter(w => w.Name && w.Retail);
+
+document.getElementById('subtitle').textContent = `${wines.length} wines · Ask by voice or text`;
+
+// Build wine context for Claude
+const wineContext = wines.map(w =>
+  `${w.Name} | ${w.Producer} | ${w.Vintage || 'NV'} | ${w.color} | ${w.Varietal || 'N/A'} | ${w.Region}, ${w.Country} | $${w.Retail} | ABV:${w.ABV}%`
+).join('\n');
+
+const SYSTEM_PROMPT = `You are a helpful wine sommelier assistant. Answer questions based ONLY on the wine dataset below. Do not invent facts. Be concise and friendly. For recommendations, list up to 5 wines with name, price, and a brief reason. If the question is outside the dataset, say so politely.
+
+WINE DATASET (${wines.length} wines):
+${wineContext}`;
+
+// State
+let isSpeaking = false;
+
+function scrollBottom() {
+  const area = document.getElementById('chat-area');
+  area.scrollTop = area.scrollHeight;
+}
+
+function addMessage(role, text) {
+  const empty = document.getElementById('empty-state');
+  if (empty) empty.remove();
+  document.getElementById('suggestions').style.display = 'none';
+
+  const div = document.createElement('div');
+  div.className = `msg ${role}`;
+  const bubble = document.createElement('div');
+  bubble.className = 'bubble';
+
+  if (role === 'assistant') {
+    const label = document.createElement('span');
+    label.className = 'label';
+    label.textContent = '🍷 Sommelier';
+    bubble.appendChild(label);
+  }
+
+  const textNode = document.createTextNode(text);
+  bubble.appendChild(textNode);
+
+  if (role === 'assistant') {
+    const btn = document.createElement('button');
+    btn.className = 'replay-btn';
+    btn.textContent = '🔊 Play again';
+    btn.onclick = () => speak(text);
+    bubble.appendChild(btn);
+  }
+
+  div.appendChild(bubble);
+  document.getElementById('chat-area').appendChild(div);
+  scrollBottom();
+}
+
+function showThinking() {
+  const div = document.createElement('div');
+  div.id = 'thinking';
+  div.className = 'dots';
+  for (let i = 0; i < 3; i++) {
+    const d = document.createElement('div');
+    d.className = 'dot';
+    div.appendChild(d);
+  }
+  document.getElementById('chat-area').appendChild(div);
+  scrollBottom();
+}
+
+function hideThinking() {
+  const el = document.getElementById('thinking');
+  if (el) el.remove();
+}
+
+async function ask(q) {
+  q = q.trim();
+  if (!q) return;
+  document.getElementById('query-input').value = '';
+  document.getElementById('send-btn').disabled = true;
+  addMessage('user', q);
+  showThinking();
+
+  try {
+    const res = await fetch('/api/chat', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        model: 'claude-sonnet-4-20250514',
+        max_tokens: 1000,
+        system: SYSTEM_PROMPT,
+        messages: [{ role: 'user', content: q }]
+      })
+    });
+    const data = await res.json();
+    const answer = data.content?.[0]?.text || 'Sorry, I could not get a response.';
+    hideThinking();
+    addMessage('assistant', answer);
+    speak(answer);
+  } catch (e) {
+    hideThinking();
+    addMessage('assistant', 'Error connecting to AI. Please check your connection and try again.');
+  }
+
+  document.getElementById('send-btn').disabled = false;
+}
+
+// Text-to-speech
+function speak(text) {
+  window.speechSynthesis.cancel();
+  const utt = new SpeechSynthesisUtterance(text);
+  utt.lang = 'en-US';
+  utt.rate = 1.05;
+  utt.onstart = () => { isSpeaking = true; document.getElementById('stop-btn').style.display = 'block'; };
+  utt.onend = () => { isSpeaking = false; document.getElementById('stop-btn').style.display = 'none'; };
+  window.speechSynthesis.speak(utt);
+}
+
+function stopSpeaking() {
+  window.speechSynthesis.cancel();
+  isSpeaking = false;
+  document.getElementById('stop-btn').style.display = 'none';
+}
+
+// Speech recognition
+let recognition = null;
+
+function toggleMic() {
+  const btn = document.getElementById('mic-btn');
+  if (recognition) {
+    recognition.stop();
+    recognition = null;
+    btn.classList.remove('active');
+    btn.textContent = '🎤';
+    return;
+  }
+  const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+  if (!SR) { alert('Voice input not supported. Please use Chrome.'); return; }
+  recognition = new SR();
+  recognition.lang = 'en-US';
+  recognition.interimResults = false;
+  recognition.onstart = () => { btn.classList.add('active'); btn.textContent = '⏹'; };
+  recognition.onresult = e => {
+    const t = e.results[0][0].transcript;
+    document.getElementById('query-input').value = t;
+    ask(t);
+  };
+  recognition.onend = () => { btn.classList.remove('active'); btn.textContent = '🎤'; recognition = null; };
+  recognition.onerror = () => { btn.classList.remove('active'); btn.textContent = '🎤'; recognition = null; };
+  recognition.start();
+}
+</script>
+</body>
+</html>
