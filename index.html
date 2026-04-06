@@ -444,7 +444,7 @@ async function ask(q) {
   showThinking();
 
   try {
-    const res = await fetch('/api/chat', {
+    const res = await fetch('/api/apichat', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
